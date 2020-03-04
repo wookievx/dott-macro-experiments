@@ -14,6 +14,6 @@ import cats.effect.opts._
     }
   } yield (x1 + x2) / 2
   println(s"I am evaluating first")
-  println(prog) //optymalizuje mi do pojedynczego OptIO.Suspend(() => ...)
+  println(prog) //optimising to singl Suspend(() => ...)
   val secondProg = OptIO.pure(44).flatMap(x => OptIO.delay(println(s"Got: $x")))
   println(secondProg)
