@@ -1,36 +1,22 @@
 import cats.effect._
-import cats.effect.opts._
+import optimisations.optimise
 
 @main def foo(name: String): Unit = 
-  import OptIO._
-
-  val prog = for {
-    x1 <- OptIO.delay {
-      println(s"I am working as expected: 41")
-      41
-    }
-    x2 <- OptIO.delay {
-      println(s"I am working as expected: 43")
-      43
-    }
-  } yield (x1 + x2) / 2
-  println(prog) //optimising to singl Suspend(() => ...)
-  
-  val execProg = optimise {
+  println(s"Hello $name")
+  val exampleProg = optimise {
     for {
-      x1 <- OptIO.delay {
-        println(s"I am working as expected: 41")
-        41
-      }
-      x2 <- OptIO.delay {
-        println(s"I am working as expected: 43")
-        43
-      }
-    } yield (x1 + x2) / 2
+      x <- IO.pure(22)
+      y <- IO.pure(44)
+      _ <- IO.delay(println(s"Calculated: ${x + y}"))
+    } yield x + y
   }
-
-  execProg.unsafeRunSync()
-
-  val secondProg = OptIO.pure(44).flatMap(x => OptIO.delay(println(s"Got: $x")))
-  println(secondProg)
-  secondProg.toIO.unsafeRunSync()
+  exampleProg.unsafeRunSync()
+  val advanvedProg = optimise {
+    for {
+      x <- IO.pure(44)
+      _ <- IO.delay(println("Got: $x"))
+      y <- IO.pure(42)
+      _ <- IO.delay(println("Got: $y"))
+    } yield x + y
+  }
+  advanvedProg.unsafeRunSync
