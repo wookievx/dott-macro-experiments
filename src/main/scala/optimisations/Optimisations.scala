@@ -15,13 +15,13 @@ def optimiseTop[A: Type](expr: Expr[IO[A]])(using QuoteContext): Expr[IO[A]] = {
 def optimiseIoMacro[A: Type](expr: Expr[IO[A]])(using QuoteContext): Expr[IO[A]] = 
   expr match {
     case '{ (${io}: IO[$t]).flatMap[A]($f) } =>
-      println(s"Optimising flatMap for: ${io.show}, ${f.show}")
+      println("Optimising: <io> flatMap <f>")
       optimiseFlatMapMacro(io, f)
     case '{ (${io}: IO[$t]).flatMap[$tt]($f).map[A]($ff) } =>
-      println(s"Optimising flatMap for: ${io.show}, ${f.show}, ${ff.show}")
+      println("Optimising: <io> flatMap <f> map <ff>")
       '{ ${optimiseFlatMapMacro(io, f)}.map(${ff}.asInstanceOf[Any => A]) }
     case '{ (${io}: IO[$t]).map[A]($f) } =>
-      println(s"Optimising map for: ${io.show}, ${f.show}")
+      println("Optimising: <io> map <f>")
       optimiseMapMacro(io, f)
     case c =>
       summon[QuoteContext].warning(s"Failed to perform optimisations, got AST: ${c.show}", c)
@@ -32,14 +32,27 @@ def optimiseIoMacro[A: Type](expr: Expr[IO[A]])(using QuoteContext): Expr[IO[A]]
 def optimiseFlatMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => IO[B]])(using QuoteContext): Expr[IO[B]] =
   ioExpr match
     case '{ IO.pure[A]($v) } => 
-      println("Optimising pure case")
-      optimiseIoMacro(Expr.betaReduce(f)(v))
+      val singleStep = Expr.betaReduce(f)(v) 
+      println(s"Optimising pure case result:\n\n${singleStep.show}")
+      optimiseIoMacro(singleStep)
     case '{ IO.delay[A]($v) } => 
-      println("Optimising delay case")
-      '{ IO.suspend(${optimiseIoMacro(Expr.betaReduce(f)(v))}) }
+      val singleStep = Expr.betaReduce(f)(v)
+      println(s"Optimising delay case result:\n\n${singleStep.show}")
+      '{ 
+        IO.suspend { 
+          val sideEffect: A = $v
+          ${optimiseIoMacro(rewrapFunctions('{($f)(sideEffect)}))} 
+        }
+      }
     case '{ IO.suspend[A]($nio) } => 
-      println("Optimising suspend case")
-      '{ IO.suspend(${optimiseIoMacro('{${nio}.flatMap($f)})}) }
+      val singleStep = optimiseIoMacro('{${nio}.flatMap($f)}) 
+      println(s"Suspend case result:\n\n${singleStep.show}")
+      '{ 
+        IO.suspend {
+          val sideEffect: IO[A] = $nio
+          ${optimiseIoMacro('{ sideEffect.flatMap($f) })}
+        }
+      }
     case c => 
       println("Ast not changed")
       '{ ${c}.flatMap($f) }
@@ -48,15 +61,32 @@ def optimiseFlatMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => IO[
 def optimiseMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => B])(using QuoteContext): Expr[IO[B]] = 
   ioExpr match
     case '{ IO.pure[A]($v) } => 
-      println("Optimising pure case")
-      '{ IO.pure[B](${Expr.betaReduce(f)(v)}) }
+      val singleStep = Expr.betaReduce(f)(v)
+      println(s"Optimising pure case result:\n\n${singleStep.show}")
+      '{ IO.pure[B](${singleStep}) }
     case '{ IO.delay[A]($v) } => 
-      println("Optimising delay case")
-      '{ IO.delay[B](${Expr.betaReduce(f)(v)}) }
+      val singleStep = Expr.betaReduce(f)(v)
+      println(s"Optimising delay case result:\n\n${singleStep.show}")
+      '{ IO.delay[B](${singleStep}) }
     case '{ IO.suspend[A]($nio) } => 
-      println("Optimising suspend case")
-      '{ IO.suspend(${optimiseIoMacro('{${nio}.map($f)})}) }
+      val singleStep = optimiseIoMacro('{${nio}.map($f)})
+      println(s"Optimising suspend case result:\n\n${singleStep.show}")
+      '{ IO.suspend(${singleStep}) }
     case c => 
       println("Ast not changed")
       '{ ${c}.map($f) }
 
+
+def rewrapFunctions[A: Type](mess: Expr[IO[A]])(using QuoteContext): Expr[IO[A]] = 
+  mess match {
+    case '{ (${f}: $t => IO[A]).apply($arg) } =>
+      val partialRewrite = Expr.betaReduce(f)(arg)
+      partialRewrite match {
+        case '{ (${sideEffect}: $t) match { case _ => $io } } =>
+          io
+        case c =>
+          println(s"Fixing for-comprehension mess failed: ${c.show}")
+          c
+      }
+    case c => c
+  }
