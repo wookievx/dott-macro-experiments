@@ -7,26 +7,27 @@ import scala.quoted._
 inline def optimise[A](inline code: IO[A]) = ${ optimiseTop('code) }
 
 def optimiseTop[A: Type](expr: Expr[IO[A]])(using QuoteContext): Expr[IO[A]] = {
+  println(s"Code before optimisation:\n ${expr.show}")
   val optimised = optimiseIoMacro(expr)
-  println(s"Generated optimised code: ${optimised.show}")
+  println(s"Generated optimised code:\n ${optimised.show}")
   optimised
 }
 
 def optimiseIoMacro[A: Type](expr: Expr[IO[A]])(using QuoteContext): Expr[IO[A]] = 
-  expr match {
+  expr match 
     case '{ (${io}: IO[$t]).flatMap[A]($f) } =>
-      println("Optimising: <io> flatMap <f>")
+      println(s"Optimising: ${io.show} flatMap <f>")
       optimiseFlatMapMacro(io, f)
     case '{ (${io}: IO[$t]).flatMap[$tt]($f).map[A]($ff) } =>
-      println("Optimising: <io> flatMap <f> map <ff>")
+      println(s"Optimising: ${io.show} flatMap <f> map <ff>")
       '{ ${optimiseFlatMapMacro(io, f)}.map(${ff}.asInstanceOf[Any => A]) }
     case '{ (${io}: IO[$t]).map[A]($f) } =>
-      println("Optimising: <io> map <f>")
+      println(s"Optimising: ${io.show} map <f>")
       optimiseMapMacro(io, f)
     case c =>
       summon[QuoteContext].warning(s"Failed to perform optimisations, got AST: ${c.show}", c)
       c
-  }
+  
 
 
 def optimiseFlatMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => IO[B]])(using QuoteContext): Expr[IO[B]] =
@@ -41,7 +42,7 @@ def optimiseFlatMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => IO[
       '{ 
         IO.suspend { 
           val sideEffect: A = $v
-          ${optimiseIoMacro(rewrapFunctions('{($f)(sideEffect)}))} 
+          ${optimiseIoMacro(rewrapFunctions(Expr.betaReduce(f)('sideEffect)))} 
         }
       }
     case '{ IO.suspend[A]($nio) } => 
@@ -53,6 +54,8 @@ def optimiseFlatMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => IO[
           ${optimiseIoMacro('{ sideEffect.flatMap($f) })}
         }
       }
+    case '{ (${io}: IO[$t]).map[A]($ff) } =>
+      optimiseFlatMapMacro(io, '{ l => ${Expr.betaReduce(f)(Expr.betaReduce(ff)('l))} })
     case c => 
       println("Ast not changed")
       '{ ${c}.flatMap($f) }
@@ -78,15 +81,9 @@ def optimiseMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => B])(usi
 
 
 def rewrapFunctions[A: Type](mess: Expr[IO[A]])(using QuoteContext): Expr[IO[A]] = 
-  mess match {
-    case '{ (${f}: $t => IO[A]).apply($arg) } =>
-      val partialRewrite = Expr.betaReduce(f)(arg)
-      partialRewrite match {
-        case '{ (${sideEffect}: $t) match { case _ => $io } } =>
-          io
-        case c =>
-          println(s"Fixing for-comprehension mess failed: ${c.show}")
-          c
-      }
-    case c => c
-  }
+  mess match
+    case '{ (${sideEffect}: $t) match { case _ => $io } } =>
+      io
+    case c =>
+      println(s"Fixing for-comprehension mess failed: ${c.show}")
+      c
