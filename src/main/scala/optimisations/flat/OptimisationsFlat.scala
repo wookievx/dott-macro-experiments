@@ -40,6 +40,11 @@ def optimiseSpecial[A: Type, B: Type, C: Type](io: Expr[IO[A]], f: Expr[A => IO[
     case '{ ${c}: B } =>
       Expr.betaReduce(ff)(c)
 
+def wrapUnion[A: Type](unionExpr: Expr[A | IO[A]])(using QuoteContext): Expr[IO[A]] = 
+  unionExpr match
+    case '{ ${io}: IO[A] } => io
+    case '{ ${code}: A } => '{ IO.delay($code) }
+
 def optimiseFlatMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => IO[B]])(using QuoteContext): Expr[B | IO[B]] =
   ioExpr match
     case '{ IO.pure[A]($v) } => 
@@ -53,14 +58,19 @@ def optimiseFlatMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => IO[
         ${optimiseIoMacro(rewrapFunctions(Expr.betaReduce(f)('memoized)))}
       }
     case '{ IO.suspend[A]($nio) } => 
-      '{
+      val res: Expr[B | IO[B]] = '{
         val memoized = $nio
-        ${optimiseIoMacro('{ memoized.flatMap($f) })}
-      }    
+        memoized.flatMap(arg => ${wrapUnion(optimiseIoMacro(rewrapFunctions(Expr.betaReduce(f)('arg))))})
+      }
+      res match 
+        case '{ ${io}: IO[B] } =>
+          '{ IO.suspend[B]($io) }
+        case _ =>
+          res  
     case '{ (${io}: IO[$t]).map[A]($ff) } =>
       optimiseFlatMapMacro(io, '{ l => ${Expr.betaReduce(f)(Expr.betaReduce(ff)('l))} })
     case c => 
-      println("Ast not changed")
+      println(s"Ast not changed:\n\n${c.show}\n${f.show}")
       '{ ${c}.flatMap($f) }
 
 def optimiseMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => B])(using QuoteContext): Expr[B | IO[B]] = 
@@ -83,7 +93,7 @@ def optimiseMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => B])(usi
         ${optimiseIoMacro('{memoized.map($f)})} 
       }
     case c => 
-      println("Ast not changed")
+      println(s"Ast not changed:\n\n${c.show}\n${f.show}")
       '{ ${c}.map($f) }
 
 def rewrapFunctions[A: Type](mess: Expr[IO[A]])(using QuoteContext): Expr[IO[A]] = 
