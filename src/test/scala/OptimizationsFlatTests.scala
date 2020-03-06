@@ -34,21 +34,22 @@ class OptimisationsFlatTest {
     val code = optimise {
       for {
         x <- IO.pure(41)
-        _ <- IO.suspend {
-          assertEquals(s2.toLong, 0l)
-          IO.delay(s1 += x)
-        }
+        _ <- IO.delay(s1 += x)
         y <- IO.pure(43)
-        _ <- IO.delay {
-          assertEquals(s1.toLong, 41)
-          s2 += (y + x) / 2 //checking if shadowing is not messing with me
-        }
         _ <- IO.suspend {
-          IO.delay(assertEquals(s2.toLong, 42))
+          IO.delay {
+           s2 += (y + x) / 2
+          }
         }
       } yield ()
     }
     code.unsafeRunSync()
+    assertEquals(s1.toLong, 41L)
+    assertEquals(s2.toLong, 42L)
+    code.unsafeRunSync()
+    assertEquals(s1.toLong, 2 * 41L)
+    assertEquals(s2.toLong, 2 * 42L)
+
   }
 
 }

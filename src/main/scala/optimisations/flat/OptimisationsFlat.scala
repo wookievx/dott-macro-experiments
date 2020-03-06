@@ -11,7 +11,7 @@ def optimiseTop[A: Type](expr: Expr[IO[A]])(using QuoteContext): Expr[IO[A]] =
   val optimised = optimiseIoMacro(expr)
   println(s"Generated optimised code:\n ${optimised.show}")
   optimised match {
-    case '{ ${io}: IO[A] } => io
+    case '{ ${io}: IO[A] } => '{ IO.suspend($io) }
     case '{ ${code}: A } => '{ IO.delay($code) }
   }
   
