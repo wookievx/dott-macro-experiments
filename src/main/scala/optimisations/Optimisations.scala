@@ -34,11 +34,8 @@ def optimiseFlatMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => IO[
   ioExpr match
     case '{ IO.pure[A]($v) } => 
       val singleStep = Expr.betaReduce(f)(v) 
-      println(s"Optimising pure case result:\n\n${singleStep.show}")
       optimiseIoMacro(singleStep)
     case '{ IO.delay[A]($v) } => 
-      val singleStep = Expr.betaReduce(f)(v)
-      println(s"Optimising delay case result:\n\n${singleStep.show}")
       '{ 
         IO.suspend { 
           val sideEffect: A = $v
@@ -46,8 +43,7 @@ def optimiseFlatMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => IO[
         }
       }
     case '{ IO.suspend[A]($nio) } => 
-      val singleStep = optimiseIoMacro('{${nio}.flatMap($f)}) 
-      println(s"Suspend case result:\n\n${singleStep.show}")
+      val singleStep = optimiseIoMacro('{${nio}.flatMap($f)})
       '{ 
         IO.suspend {
           val sideEffect: IO[A] = $nio
@@ -57,7 +53,7 @@ def optimiseFlatMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => IO[
     case '{ (${io}: IO[$t]).map[A]($ff) } =>
       optimiseFlatMapMacro(io, '{ l => ${Expr.betaReduce(f)(Expr.betaReduce(ff)('l))} })
     case c => 
-      println("Ast not changed")
+      println(s"Ast not changed:\n\n${c.show}")
       '{ ${c}.flatMap($f) }
 
 
@@ -65,18 +61,15 @@ def optimiseMapMacro[A: Type, B: Type](ioExpr: Expr[IO[A]], f: Expr[A => B])(usi
   ioExpr match
     case '{ IO.pure[A]($v) } => 
       val singleStep = Expr.betaReduce(f)(v)
-      println(s"Optimising pure case result:\n\n${singleStep.show}")
       '{ IO.pure[B](${singleStep}) }
     case '{ IO.delay[A]($v) } => 
       val singleStep = Expr.betaReduce(f)(v)
-      println(s"Optimising delay case result:\n\n${singleStep.show}")
       '{ IO.delay[B](${singleStep}) }
     case '{ IO.suspend[A]($nio) } => 
       val singleStep = optimiseIoMacro('{${nio}.map($f)})
-      println(s"Optimising suspend case result:\n\n${singleStep.show}")
       '{ IO.suspend(${singleStep}) }
     case c => 
-      println("Ast not changed")
+      println(s"Ast not changed:\n\n${c.show}")
       '{ ${c}.map($f) }
 
 

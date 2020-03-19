@@ -1,5 +1,6 @@
 import cats.effect._
-import optimisations.optimise
+import cats.data.EitherT
+import optimisations.flat.optimise
 import options._
 import options.Opt.{map, flatMap, given _}
 
@@ -14,16 +15,16 @@ import options.Opt.{map, flatMap, given _}
     } yield x + y
   }
   advanvedProg.unsafeRunSync
-  val multiMapProg = optimise {
-    for {
-      _ <- IO.delay("Failing")
-      x = 44
-      y = 45
-      z = 46
-      _ <- IO.delay(s"Killing: ${x + y + z}")
-    } yield ()
-  }
-  multiMapProg.unsafeRunSync()
+  // val multiMapProg = optimise {
+  //   for {
+  //     _ <- IO.delay("Failing")
+  //     x = 44
+  //     y = 45
+  //     z = 46
+  //     _ <- IO.delay(s"Killing: ${x + y + z}")
+  //   } yield ()
+  // }
+  // multiMapProg.unsafeRunSync()
   val somePeskyNullable: Opt[Int] = 42
 
   val generateIfs = for {
@@ -38,4 +39,3 @@ import options.Opt.{map, flatMap, given _}
     x2 <- Opt.some(66)
   } yield (x1 + x2) / 2
   println(optimisiedAway)
-
