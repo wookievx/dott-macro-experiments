@@ -1,5 +1,7 @@
 import cats.effect._
 import optimisations.optimise
+import options._
+import options.Opt.{map, flatMap, given _}
 
 @main def foo(name: String): Unit = 
   println(s"Hello $name")
@@ -22,3 +24,18 @@ import optimisations.optimise
     } yield ()
   }
   multiMapProg.unsafeRunSync()
+  val somePeskyNullable: Opt[Int] = 42
+
+  val generateIfs = for {
+    x1 <- somePeskyNullable
+    x2 <- if x1 > 42 then Opt.some(0) else Opt.some(x1)
+    x3 <- if x1 < 42 && x2 > 34 then Opt.some(9000) else Opt.some(0)
+  } yield x3
+  println(generateIfs)
+
+  val optimisiedAway = for {
+    x1 <- Opt.some(44)
+    x2 <- Opt.some(66)
+  } yield (x1 + x2) / 2
+  println(optimisiedAway)
+
