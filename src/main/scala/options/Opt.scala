@@ -59,5 +59,5 @@ object Opt {
           else
             Opt.none[B]
         }
-
+  
 }

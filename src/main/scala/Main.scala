@@ -2,7 +2,7 @@ import cats.effect._
 import cats.data.EitherT
 import optimisations.flat.optimise
 import options._
-import options.Opt.{map, flatMap, given _}
+import options.Opt.{given _}
 
 @main def foo(name: String): Unit = 
   println(s"Hello $name")
